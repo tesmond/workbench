@@ -1,0 +1,43 @@
+# MySQL Workbench Python Edition Requirements
+
+# Core GUI Framework
+PyQt6
+PyQt6-Qt6
+QScintilla
+
+# Database Connectivity
+SQLAlchemy
+PyMySQL
+cryptography
+
+# SQL Syntax Highlighting
+Pygments
+
+# Configuration and Data Validation
+pydantic
+pydantic-settings
+
+# Async Support
+aiofiles
+
+# Utilities
+python-dateutil
+packaging
+typing-extensions
+
+# SSH Tunneling Support
+paramiko
+
+# JSON and YAML Support
+PyYAML
+
+# Optional: Enhanced debugging
+rich
+
+# Development Dependencies (optional)
+pytest
+pytest-qt
+pytest-asyncio
+black
+flake8
+mypy
