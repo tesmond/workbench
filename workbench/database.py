@@ -4,28 +4,30 @@ Database connection and query execution engine.
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
 import pymysql
 import pymysql.cursors
 from pymysql.err import Error as PyMySQLError
+
 try:
     import psycopg2
     import psycopg2.extras
     from psycopg2 import Error as PostgreSQLError
+
     POSTGRESQL_AVAILABLE = True
 except ImportError:
     POSTGRESQL_AVAILABLE = False
-import paramiko
 import socket
 import threading
-from datetime import datetime
 from abc import ABC, abstractmethod
+from datetime import datetime
+
+import paramiko
 
 from .config import ConnectionProfile, DatabaseType
-
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +141,7 @@ class SSHTunnel:
 
         except paramiko.AuthenticationException as e:
             logger.error(f"SSH authentication failed: {e}")
-            raise Exception(f"SSH authentication failed: Check username/password/key")
+            raise Exception("SSH authentication failed: Check username/password/key")
         except (paramiko.SSHException, socket.error) as e:
             logger.error(f"SSH connection failed: {e}")
             raise Exception(
@@ -159,52 +161,54 @@ class SSHTunnel:
 
 class DatabaseAdapter(ABC):
     """Abstract base class for database adapters"""
-    
+
     def __init__(self, profile: ConnectionProfile):
         self.profile = profile
         self.connection = None
         self.is_connected = False
         self.ssh_tunnel = None
-    
+
     @abstractmethod
     def connect_sync(self) -> bool:
         """Synchronous connection method"""
         pass
-    
+
     @abstractmethod
     async def connect(self) -> bool:
         """Asynchronous connection method"""
         pass
-    
+
     @abstractmethod
     async def disconnect(self):
         """Disconnect from database"""
         pass
-    
+
     @abstractmethod
-    async def execute_query(self, query: str, fetch_results: bool = True) -> QueryResult:
+    async def execute_query(
+        self, query: str, fetch_results: bool = True
+    ) -> QueryResult:
         """Execute SQL query"""
         pass
-    
+
     @abstractmethod
     async def get_databases(self) -> List[DatabaseObject]:
         """Get list of databases/schemas"""
         pass
-    
+
     async def get_schemas(self, database: str) -> List[DatabaseObject]:
         """Get list of schemas in database (default implementation returns empty list)"""
         return []
-    
+
     @abstractmethod
     async def get_tables(self, schema: str) -> List[DatabaseObject]:
         """Get list of tables in schema"""
         pass
-    
+
     @abstractmethod
     async def get_table_columns(self, schema: str, table: str) -> List[DatabaseObject]:
         """Get columns for a specific table"""
         pass
-    
+
     @abstractmethod
     def test_connection_sync(self) -> tuple[bool, str]:
         """Test connection synchronously"""
@@ -213,46 +217,48 @@ class DatabaseAdapter(ABC):
 
 class MySQLAdapter(DatabaseAdapter):
     """MySQL database adapter"""
-    
+
     def __init__(self, profile: ConnectionProfile):
         super().__init__(profile)
-    
+
     def connect_sync(self) -> bool:
         """Connect to MySQL database synchronously"""
         try:
             # Handle SSH tunnel if needed
             connect_params = {
-                'host': self.profile.host,
-                'port': self.profile.port,
-                'user': self.profile.username,
-                'password': self.profile.password,
-                'charset': 'utf8mb4',
-                'connect_timeout': 10,
-                'read_timeout': 30,
-                'write_timeout': 30
+                "host": self.profile.host,
+                "port": self.profile.port,
+                "user": self.profile.username,
+                "password": self.profile.password,
+                "charset": "utf8mb4",
+                "connect_timeout": 10,
+                "read_timeout": 30,
+                "write_timeout": 30,
             }
-            
+
             if self.profile.ssh_hostname:
                 self.ssh_tunnel = SSHTunnel(
                     ssh_host=self.profile.ssh_hostname,
                     ssh_port=self.profile.ssh_port or 22,
                     ssh_username=self.profile.ssh_username,
-                    ssh_key_file=str(self.profile.ssh_key_file) if self.profile.ssh_key_file else None,
+                    ssh_key_file=str(self.profile.ssh_key_file)
+                    if self.profile.ssh_key_file
+                    else None,
                     remote_host=self.profile.host,
-                    remote_port=self.profile.port
+                    remote_port=self.profile.port,
                 )
                 local_port = self.ssh_tunnel.start()
-                connect_params['host'] = 'localhost'
-                connect_params['port'] = local_port
-            
+                connect_params["host"] = "localhost"
+                connect_params["port"] = local_port
+
             # Add default database if specified
             if self.profile.default_schema:
-                connect_params['database'] = self.profile.default_schema
-            
+                connect_params["database"] = self.profile.default_schema
+
             self.connection = pymysql.connect(**connect_params)
             self.is_connected = True
             return True
-            
+
         except Exception as e:
             logger.error(f"MySQL connection failed: {e}")
             self.is_connected = False
@@ -260,11 +266,11 @@ class MySQLAdapter(DatabaseAdapter):
                 self.ssh_tunnel.stop()
                 self.ssh_tunnel = None
             return False
-    
+
     async def connect(self) -> bool:
         """Connect to MySQL database asynchronously"""
         return await asyncio.get_event_loop().run_in_executor(None, self.connect_sync)
-    
+
     async def disconnect(self):
         """Disconnect from MySQL database"""
         if self.connection:
@@ -273,131 +279,132 @@ class MySQLAdapter(DatabaseAdapter):
             except:
                 pass
             self.connection = None
-        
+
         if self.ssh_tunnel:
             self.ssh_tunnel.stop()
             self.ssh_tunnel = None
-        
+
         self.is_connected = False
-    
+
     def disconnect_sync(self):
         """Disconnect synchronously"""
         asyncio.run(self.disconnect())
-    
-    async def execute_query(self, query: str, fetch_results: bool = True) -> QueryResult:
+
+    async def execute_query(
+        self, query: str, fetch_results: bool = True
+    ) -> QueryResult:
         """Execute MySQL query"""
         if not self.connection or not self.is_connected:
             return QueryResult(
                 result_type=QueryResultType.ERROR,
                 error_message="Not connected to database",
-                execution_time=0.0
+                execution_time=0.0,
             )
-        
+
         start_time = datetime.now()
-        
+
         try:
             with self.connection.cursor(pymysql.cursors.DictCursor) as cursor:
                 cursor.execute(query)
-                
+
                 execution_time = (datetime.now() - start_time).total_seconds()
-                
+
                 if fetch_results and cursor.description:
                     # SELECT query with results
                     rows = cursor.fetchall()
                     columns = [
-                        {'name': desc[0], 'type': str(desc[1]), 'nullable': True}
+                        {"name": desc[0], "type": str(desc[1]), "nullable": True}
                         for desc in cursor.description
                     ]
-                    
+
                     return QueryResult(
                         result_type=QueryResultType.RESULTSET,
                         data=rows,
                         columns=columns,
-                        execution_time=execution_time
+                        execution_time=execution_time,
                     )
                 else:
                     # UPDATE/INSERT/DELETE query
                     affected_rows = cursor.rowcount
                     self.connection.commit()
-                    
+
                     return QueryResult(
                         result_type=QueryResultType.UPDATE,
                         affected_rows=affected_rows,
                         execution_time=execution_time,
-                        message=f"{affected_rows} row(s) affected"
+                        message=f"{affected_rows} row(s) affected",
                     )
-        
+
         except PyMySQLError as e:
             execution_time = (datetime.now() - start_time).total_seconds()
             return QueryResult(
                 result_type=QueryResultType.ERROR,
                 error_message=str(e),
-                error_code=getattr(e, 'args', [None])[0],
-                execution_time=execution_time
+                error_code=getattr(e, "args", [None])[0],
+                execution_time=execution_time,
             )
-    
+
     async def get_databases(self) -> List[DatabaseObject]:
         """Get list of MySQL databases"""
         result = await self.execute_query("SHOW DATABASES")
         databases = []
-        
+
         if result.result_type == QueryResultType.RESULTSET and result.data:
             for row in result.data:
-                db_name = row.get('Database', '')
-                databases.append(DatabaseObject(
-                    name=db_name,
-                    object_type='schema'
-                ))
-        
+                db_name = row.get("Database", "")
+                databases.append(DatabaseObject(name=db_name, object_type="schema"))
+
         return databases
-    
+
     async def get_schemas(self, database: str) -> List[DatabaseObject]:
         """MySQL doesn't have schemas like PostgreSQL - return empty list"""
         return []
-    
+
     async def get_tables(self, schema: str) -> List[DatabaseObject]:
         """Get list of tables in MySQL schema"""
         query = f"SHOW TABLES FROM `{schema}`"
         result = await self.execute_query(query)
         tables = []
-        
+
         if result.result_type == QueryResultType.RESULTSET and result.data:
             for row in result.data:
                 # The column name varies by MySQL version
-                table_name = list(row.values())[0] if row else ''
+                table_name = list(row.values())[0] if row else ""
                 if table_name:
-                    tables.append(DatabaseObject(
-                        name=table_name,
-                        object_type='table',
-                        schema=schema
-                    ))
-        
+                    tables.append(
+                        DatabaseObject(
+                            name=table_name, object_type="table", schema=schema
+                        )
+                    )
+
         return tables
-    
+
     async def get_table_columns(self, schema: str, table: str) -> List[DatabaseObject]:
         """Get columns for MySQL table"""
         query = f"DESCRIBE `{schema}`.`{table}`"
         result = await self.execute_query(query)
         columns = []
-        
+
         if result.result_type == QueryResultType.RESULTSET and result.data:
             for row in result.data:
-                columns.append(DatabaseObject(
-                    name=row.get('Field', ''),
-                    object_type='column',
-                    schema=schema,
-                    parent=table,
-                    extra_info={
-                        'data_type': row.get('Type', ''),
-                        'nullable': row.get('Null', '') == 'YES',
-                        'key': row.get('Key', ''),
-                        'default': row.get('Default', ''),
-                        'extra': row.get('Extra', '')
-                    }
-                ))
-        
+                columns.append(
+                    DatabaseObject(
+                        name=row.get("Field", ""),
+                        object_type="column",
+                        schema=schema,
+                        parent=table,
+                        extra_info={
+                            "data_type": row.get("Type", ""),
+                            "nullable": row.get("Null", "") == "YES",
+                            "key": row.get("Key", ""),
+                            "default": row.get("Default", ""),
+                            "extra": row.get("Extra", ""),
+                        },
+                    )
+                )
+
         return columns
-    
+
     def test_connection_sync(self) -> tuple[bool, str]:
         """Test MySQL connection synchronously"""
         try:
@@ -417,48 +424,52 @@ class MySQLAdapter(DatabaseAdapter):
 
 class PostgreSQLAdapter(DatabaseAdapter):
     """PostgreSQL database adapter"""
-    
+
     def __init__(self, profile: ConnectionProfile):
         super().__init__(profile)
         if not POSTGRESQL_AVAILABLE:
-            raise ImportError("psycopg2 is not installed. Install with: pip install psycopg2-binary")
-    
+            raise ImportError(
+                "psycopg2 is not installed. Install with: pip install psycopg2-binary"
+            )
+
     def connect_sync(self) -> bool:
         """Connect to PostgreSQL database synchronously"""
         try:
             # Handle SSH tunnel if needed
             connect_params = {
-                'host': self.profile.host,
-                'port': self.profile.port,
-                'user': self.profile.username,
-                'password': self.profile.password,
-                'connect_timeout': 10
+                "host": self.profile.host,
+                "port": self.profile.port,
+                "user": self.profile.username,
+                "password": self.profile.password,
+                "connect_timeout": 10,
             }
-            
+
             if self.profile.ssh_hostname:
                 self.ssh_tunnel = SSHTunnel(
                     ssh_host=self.profile.ssh_hostname,
                     ssh_port=self.profile.ssh_port or 22,
                     ssh_username=self.profile.ssh_username,
-                    ssh_key_file=str(self.profile.ssh_key_file) if self.profile.ssh_key_file else None,
+                    ssh_key_file=str(self.profile.ssh_key_file)
+                    if self.profile.ssh_key_file
+                    else None,
                     remote_host=self.profile.host,
-                    remote_port=self.profile.port
+                    remote_port=self.profile.port,
                 )
                 local_port = self.ssh_tunnel.start()
-                connect_params['host'] = 'localhost'
-                connect_params['port'] = local_port
-            
+                connect_params["host"] = "localhost"
+                connect_params["port"] = local_port
+
             # Add default database if specified
             if self.profile.default_schema:
-                connect_params['database'] = self.profile.default_schema
+                connect_params["database"] = self.profile.default_schema
             else:
-                connect_params['database'] = 'postgres'  # Default PostgreSQL database
-            
+                connect_params["database"] = "postgres"  # Default PostgreSQL database
+
             self.connection = psycopg2.connect(**connect_params)
             self.connection.autocommit = True  # Enable autocommit for PostgreSQL
             self.is_connected = True
             return True
-            
+
         except Exception as e:
             logger.error(f"PostgreSQL connection failed: {e}")
             self.is_connected = False
@@ -466,11 +477,11 @@ class PostgreSQLAdapter(DatabaseAdapter):
                 self.ssh_tunnel.stop()
                 self.ssh_tunnel = None
             return False
-    
+
     async def connect(self) -> bool:
         """Connect to PostgreSQL database asynchronously"""
         return await asyncio.get_event_loop().run_in_executor(None, self.connect_sync)
-    
+
     async def disconnect(self):
         """Disconnect from PostgreSQL database"""
         if self.connection:
@@ -479,140 +490,153 @@ class PostgreSQLAdapter(DatabaseAdapter):
             except:
                 pass
             self.connection = None
-        
+
         if self.ssh_tunnel:
             self.ssh_tunnel.stop()
             self.ssh_tunnel = None
-        
+
         self.is_connected = False
-    
+
     def disconnect_sync(self):
         """Disconnect synchronously"""
         asyncio.run(self.disconnect())
-    
-    async def execute_query(self, query: str, fetch_results: bool = True) -> QueryResult:
+
+    async def execute_query(
+        self, query: str, fetch_results: bool = True
+    ) -> QueryResult:
         """Execute PostgreSQL query"""
         if not self.connection or not self.is_connected:
             return QueryResult(
                 result_type=QueryResultType.ERROR,
                 error_message="Not connected to database",
-                execution_time=0.0
+                execution_time=0.0,
             )
-        
+
         start_time = datetime.now()
-        
+
         try:
-            with self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            with self.connection.cursor(
+                cursor_factory=psycopg2.extras.RealDictCursor
+            ) as cursor:
                 cursor.execute(query)
-                
+
                 execution_time = (datetime.now() - start_time).total_seconds()
-                
+
                 if fetch_results and cursor.description:
                     # SELECT query with results
                     rows = [dict(row) for row in cursor.fetchall()]
                     columns = [
-                        {'name': desc.name, 'type': str(desc.type_code), 'nullable': True}
+                        {
+                            "name": desc.name,
+                            "type": str(desc.type_code),
+                            "nullable": True,
+                        }
                         for desc in cursor.description
                     ]
-                    
+
                     return QueryResult(
                         result_type=QueryResultType.RESULTSET,
                         data=rows,
                         columns=columns,
-                        execution_time=execution_time
+                        execution_time=execution_time,
                     )
                 else:
                     # UPDATE/INSERT/DELETE query
                     affected_rows = cursor.rowcount
-                    
+
                     return QueryResult(
                         result_type=QueryResultType.UPDATE,
                         affected_rows=affected_rows,
                         execution_time=execution_time,
-                        message=f"{affected_rows} row(s) affected"
+                        message=f"{affected_rows} row(s) affected",
                     )
-        
+
         except PostgreSQLError as e:
             execution_time = (datetime.now() - start_time).total_seconds()
             return QueryResult(
                 result_type=QueryResultType.ERROR,
                 error_message=str(e),
-                error_code=getattr(e, 'pgcode', None),
-                execution_time=execution_time
+                error_code=getattr(e, "pgcode", None),
+                execution_time=execution_time,
             )
-    
+
     async def get_databases(self) -> List[DatabaseObject]:
         """Get list of PostgreSQL databases"""
         logger.info("PostgreSQL: Getting databases")
-        result = await self.execute_query("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
+        result = await self.execute_query(
+            "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
+        )
         databases = []
-        
+
         if result.result_type == QueryResultType.RESULTSET and result.data:
             for row in result.data:
-                db_name = row.get('datname', '')
-                databases.append(DatabaseObject(
-                    name=db_name,
-                    object_type='database'
-                ))
+                db_name = row.get("datname", "")
+                databases.append(DatabaseObject(name=db_name, object_type="database"))
         elif result.result_type == QueryResultType.ERROR:
             logger.error(f"PostgreSQL get_databases error: {result.error_message}")
-        
+
         logger.info(f"PostgreSQL: Found {len(databases)} databases")
         return databases
-    
+
     async def get_schemas(self, database: str) -> List[DatabaseObject]:
         """Get list of schemas in a PostgreSQL database"""
         logger.info(f"PostgreSQL: Getting schemas in database '{database}'")
-        
+
         # For PostgreSQL, we need to connect to the specific database to see its schemas
         temp_connection = None
         try:
             # Create temporary connection to the target database
             connect_params = {
-                'host': self.profile.host,
-                'port': self.profile.port,
-                'user': self.profile.username,
-                'password': self.profile.password,
-                'database': database,
-                'connect_timeout': 10
+                "host": self.profile.host,
+                "port": self.profile.port,
+                "user": self.profile.username,
+                "password": self.profile.password,
+                "database": database,
+                "connect_timeout": 10,
             }
-            
+
             # Handle SSH tunnel if needed (reuse existing tunnel)
-            if self.ssh_tunnel and hasattr(self.ssh_tunnel, 'local_port'):
-                connect_params['host'] = 'localhost'
-                connect_params['port'] = self.ssh_tunnel.local_port
-            
+            if self.ssh_tunnel and hasattr(self.ssh_tunnel, "local_port"):
+                connect_params["host"] = "localhost"
+                connect_params["port"] = self.ssh_tunnel.local_port
+
             temp_connection = psycopg2.connect(**connect_params)
-            
+
             query = """
                 SELECT schema_name 
                 FROM information_schema.schemata 
                 WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast', 'pg_temp_1', 'pg_toast_temp_1')
                 ORDER BY schema_name
             """
-            
-            with temp_connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+
+            with temp_connection.cursor(
+                cursor_factory=psycopg2.extras.RealDictCursor
+            ) as cursor:
                 cursor.execute(query)
                 rows = [dict(row) for row in cursor.fetchall()]
-            
+
             schemas = []
             for row in rows:
-                schema_name = row.get('schema_name', '')
+                schema_name = row.get("schema_name", "")
                 if schema_name:
-                    schemas.append(DatabaseObject(
-                        name=schema_name,
-                        object_type='schema',
-                        parent=database
-                    ))
-            
-            logger.info(f"PostgreSQL: Found {len(schemas)} schemas in database '{database}'")
+                    schemas.append(
+                        DatabaseObject(
+                            name=schema_name, object_type="schema", parent=database
+                        )
+                    )
+
+            logger.info(
+                f"PostgreSQL: Found {len(schemas)} schemas in database '{database}'"
+            )
             return schemas
-            
+
         except PostgreSQLError as e:
             logger.error(f"PostgreSQL get_schemas error for database '{database}': {e}")
             return []
         except Exception as e:
-            logger.error(f"PostgreSQL get_schemas unexpected error for database '{database}': {e}")
+            logger.error(
+                f"PostgreSQL get_schemas unexpected error for database '{database}': {e}"
+            )
             return []
         finally:
             if temp_connection:
@@ -620,76 +644,88 @@ class PostgreSQLAdapter(DatabaseAdapter):
                     temp_connection.close()
                 except:
                     pass
-    
+
     async def get_tables(self, schema: str) -> List[DatabaseObject]:
         """Get list of tables in PostgreSQL schema"""
         # Extract database and schema if schema contains database.schema format
-        if '.' in schema:
-            database, schema_name = schema.split('.', 1)
+        if "." in schema:
+            database, schema_name = schema.split(".", 1)
         else:
             # If no database specified, try to get from connection or use current connection
             database = None
             schema_name = schema
-        
-        logger.info(f"PostgreSQL: Getting tables for schema '{schema_name}' in database '{database}'")
-        
+
+        logger.info(
+            f"PostgreSQL: Getting tables for schema '{schema_name}' in database '{database}'"
+        )
+
         # If we have database context, use temporary connection to that database
         if database:
             return await self._get_tables_with_database_context(database, schema_name)
         else:
             # Fallback to current connection
             return await self._get_tables_current_connection(schema_name)
-    
-    async def _get_tables_with_database_context(self, database: str, schema: str) -> List[DatabaseObject]:
+
+    async def _get_tables_with_database_context(
+        self, database: str, schema: str
+    ) -> List[DatabaseObject]:
         """Get tables using a temporary connection to specific database"""
         temp_connection = None
         try:
             # Create temporary connection to the target database
             connect_params = {
-                'host': self.profile.host,
-                'port': self.profile.port,
-                'user': self.profile.username,
-                'password': self.profile.password,
-                'database': database,
-                'connect_timeout': 10
+                "host": self.profile.host,
+                "port": self.profile.port,
+                "user": self.profile.username,
+                "password": self.profile.password,
+                "database": database,
+                "connect_timeout": 10,
             }
-            
+
             # Handle SSH tunnel if needed (reuse existing tunnel)
-            if self.ssh_tunnel and hasattr(self.ssh_tunnel, 'local_port'):
-                connect_params['host'] = 'localhost'
-                connect_params['port'] = self.ssh_tunnel.local_port
-            
+            if self.ssh_tunnel and hasattr(self.ssh_tunnel, "local_port"):
+                connect_params["host"] = "localhost"
+                connect_params["port"] = self.ssh_tunnel.local_port
+
             temp_connection = psycopg2.connect(**connect_params)
-            
+
             query = """
                 SELECT table_name 
                 FROM information_schema.tables 
                 WHERE table_schema = %s AND table_type = 'BASE TABLE'
                 ORDER BY table_name
             """
-            
-            with temp_connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+
+            with temp_connection.cursor(
+                cursor_factory=psycopg2.extras.RealDictCursor
+            ) as cursor:
                 cursor.execute(query, (schema,))
                 rows = [dict(row) for row in cursor.fetchall()]
-            
+
             tables = []
             for row in rows:
-                table_name = row.get('table_name', '')
+                table_name = row.get("table_name", "")
                 if table_name:
-                    tables.append(DatabaseObject(
-                        name=table_name,
-                        object_type='table',
-                        schema=schema
-                    ))
-            
-            logger.info(f"PostgreSQL: Found {len(tables)} tables in schema '{database}.{schema}'")
+                    tables.append(
+                        DatabaseObject(
+                            name=table_name, object_type="table", schema=schema
+                        )
+                    )
+
+            logger.info(
+                f"PostgreSQL: Found {len(tables)} tables in schema '{database}.{schema}'"
+            )
             return tables
-            
+
         except PostgreSQLError as e:
-            logger.error(f"PostgreSQL get_tables error for database '{database}', schema '{schema}': {e}")
+            logger.error(
+                f"PostgreSQL get_tables error for database '{database}', schema '{schema}': {e}"
+            )
             return []
         except Exception as e:
-            logger.error(f"PostgreSQL get_tables unexpected error for database '{database}', schema '{schema}': {e}")
+            logger.error(
+                f"PostgreSQL get_tables unexpected error for database '{database}', schema '{schema}': {e}"
+            )
             return []
         finally:
             if temp_connection:
@@ -697,46 +733,52 @@ class PostgreSQLAdapter(DatabaseAdapter):
                     temp_connection.close()
                 except:
                     pass
-    
+
     async def _get_tables_current_connection(self, schema: str) -> List[DatabaseObject]:
         """Get tables using current connection (fallback method)"""
-        logger.info(f"PostgreSQL: Getting tables for schema '{schema}' using current connection")
+        logger.info(
+            f"PostgreSQL: Getting tables for schema '{schema}' using current connection"
+        )
         query = """
             SELECT table_name 
             FROM information_schema.tables 
             WHERE table_schema = %s AND table_type = 'BASE TABLE'
             ORDER BY table_name
         """
-        
+
         if not self.connection or not self.is_connected:
             logger.warning("PostgreSQL: No active connection for get_tables")
             return []
-        
+
         try:
-            with self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            with self.connection.cursor(
+                cursor_factory=psycopg2.extras.RealDictCursor
+            ) as cursor:
                 cursor.execute(query, (schema,))
                 rows = [dict(row) for row in cursor.fetchall()]
-                
+
             tables = []
             for row in rows:
-                table_name = row.get('table_name', '')
+                table_name = row.get("table_name", "")
                 if table_name:
-                    tables.append(DatabaseObject(
-                        name=table_name,
-                        object_type='table',
-                        schema=schema
-                    ))
-            
-            logger.info(f"PostgreSQL: Found {len(tables)} tables in schema '{schema}' (current connection)")
+                    tables.append(
+                        DatabaseObject(
+                            name=table_name, object_type="table", schema=schema
+                        )
+                    )
+
+            logger.info(
+                f"PostgreSQL: Found {len(tables)} tables in schema '{schema}' (current connection)"
+            )
             return tables
-            
+
         except PostgreSQLError as e:
             logger.error(f"PostgreSQL get_tables error: {e}")
             return []
         except Exception as e:
             logger.error(f"PostgreSQL get_tables unexpected error: {e}")
             return []
-    
+
     async def get_tables_old_method(self, schema: str) -> List[DatabaseObject]:
         """Get list of tables in PostgreSQL schema (old method using execute_query)"""
         logger.info(f"PostgreSQL: Getting tables for schema '{schema}' (old method)")
@@ -748,31 +790,33 @@ class PostgreSQLAdapter(DatabaseAdapter):
         """
         logger.debug(f"PostgreSQL query: {query.strip()}")
         result = await self.execute_query(query)
-        logger.debug(f"PostgreSQL query result: {result.result_type}, rows: {len(result.data) if result.data else 0}")
+        logger.debug(
+            f"PostgreSQL query result: {result.result_type}, rows: {len(result.data) if result.data else 0}"
+        )
         tables = []
-        
+
         if result.result_type == QueryResultType.RESULTSET and result.data:
             for row in result.data:
-                table_name = row.get('table_name', '')
+                table_name = row.get("table_name", "")
                 if table_name:
-                    tables.append(DatabaseObject(
-                        name=table_name,
-                        object_type='table',
-                        schema=schema
-                    ))
+                    tables.append(
+                        DatabaseObject(
+                            name=table_name, object_type="table", schema=schema
+                        )
+                    )
         elif result.result_type == QueryResultType.ERROR:
             logger.error(f"PostgreSQL get_tables error: {result.error_message}")
-            
+
         logger.info(f"PostgreSQL: Found {len(tables)} tables in schema '{schema}'")
         return tables
-    
+
     async def get_table_columns(self, schema: str, table: str) -> List[DatabaseObject]:
         """Get columns for PostgreSQL table"""
         logger.info(f"PostgreSQL: Getting columns for table '{schema}.{table}'")
-        
+
         if not self.connection or not self.is_connected:
             return []
-        
+
         try:
             query = """
                 SELECT column_name, data_type, is_nullable, column_default
@@ -780,36 +824,44 @@ class PostgreSQLAdapter(DatabaseAdapter):
                 WHERE table_schema = %s AND table_name = %s
                 ORDER BY ordinal_position
             """
-            
-            with self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+
+            with self.connection.cursor(
+                cursor_factory=psycopg2.extras.RealDictCursor
+            ) as cursor:
                 cursor.execute(query, (schema, table))
                 rows = [dict(row) for row in cursor.fetchall()]
-                
+
             columns = []
             for row in rows:
-                columns.append(DatabaseObject(
-                    name=row.get('column_name', ''),
-                    object_type='column',
-                    schema=schema,
-                    parent=table,
-                    extra_info={
-                        'data_type': row.get('data_type', ''),
-                        'nullable': row.get('is_nullable', '') == 'YES',
-                        'default': row.get('column_default', '')
-                    }
-                ))
-            
-            logger.info(f"PostgreSQL: Found {len(columns)} columns in table '{schema}.{table}'")
+                columns.append(
+                    DatabaseObject(
+                        name=row.get("column_name", ""),
+                        object_type="column",
+                        schema=schema,
+                        parent=table,
+                        extra_info={
+                            "data_type": row.get("data_type", ""),
+                            "nullable": row.get("is_nullable", "") == "YES",
+                            "default": row.get("column_default", ""),
+                        },
+                    )
+                )
+
+            logger.info(
+                f"PostgreSQL: Found {len(columns)} columns in table '{schema}.{table}'"
+            )
             return columns
-            
+
         except PostgreSQLError as e:
             logger.error(f"PostgreSQL get_table_columns error: {e}")
             return []
         except Exception as e:
             logger.error(f"PostgreSQL get_table_columns unexpected error: {e}")
             return []
-    
-    async def get_table_columns_old_method(self, schema: str, table: str) -> List[DatabaseObject]:
+
+    async def get_table_columns_old_method(
+        self, schema: str, table: str
+    ) -> List[DatabaseObject]:
         """Get columns for PostgreSQL table (old method)"""
         query = f"""
             SELECT column_name, data_type, is_nullable, column_default
@@ -819,23 +871,25 @@ class PostgreSQLAdapter(DatabaseAdapter):
         """
         result = await self.execute_query(query)
         columns = []
-        
+
         if result.result_type == QueryResultType.RESULTSET and result.data:
             for row in result.data:
-                columns.append(DatabaseObject(
-                    name=row.get('column_name', ''),
-                    object_type='column',
-                    schema=schema,
-                    parent=table,
-                    extra_info={
-                        'data_type': row.get('data_type', ''),
-                        'nullable': row.get('is_nullable', '') == 'YES',
-                        'default': row.get('column_default', '')
-                    }
-                ))
-        
+                columns.append(
+                    DatabaseObject(
+                        name=row.get("column_name", ""),
+                        object_type="column",
+                        schema=schema,
+                        parent=table,
+                        extra_info={
+                            "data_type": row.get("data_type", ""),
+                            "nullable": row.get("is_nullable", "") == "YES",
+                            "default": row.get("column_default", ""),
+                        },
+                    )
+                )
+
         return columns
-    
+
     def test_connection_sync(self) -> tuple[bool, str]:
         """Test PostgreSQL connection synchronously"""
         try:
@@ -865,70 +919,75 @@ def create_database_adapter(profile: ConnectionProfile) -> DatabaseAdapter:
 
 class DatabaseConnection:
     """Database connection wrapper that uses adapters for different database types"""
-    
+
     def __init__(self, profile: ConnectionProfile):
         self.profile = profile
         self.adapter = create_database_adapter(profile)
         self.connection_lock = threading.Lock()
-    
+
     @property
     def is_connected(self) -> bool:
         return self.adapter.is_connected
-    
+
     async def connect(self) -> bool:
         """Establish database connection"""
         return await self.adapter.connect()
-    
+
     def connect_sync(self) -> bool:
         """Synchronous database connection"""
         return self.adapter.connect_sync()
-    
+
     async def disconnect(self):
         """Close database connection"""
         await self.adapter.disconnect()
-    
+
     def disconnect_sync(self):
         """Synchronous version of disconnect for cleanup"""
-        if hasattr(self.adapter, 'disconnect_sync'):
+        if hasattr(self.adapter, "disconnect_sync"):
             self.adapter.disconnect_sync()
         else:
             asyncio.run(self.adapter.disconnect())
-    
+
     async def execute_query(self, sql: str, fetch_results: bool = True) -> QueryResult:
         """Execute SQL query and return results"""
         return await self.adapter.execute_query(sql, fetch_results)
-    
+
     async def get_databases(self) -> List[DatabaseObject]:
         """Get list of databases/schemas"""
         databases = await self.adapter.get_databases()
-        
+
         # Sort databases - user schemas first, then system schemas
         if self.profile.database_type == DatabaseType.MYSQL:
             user_schemas = []
             system_schemas = []
-            
+
             for db in databases:
-                if db.name in ("information_schema", "mysql", "performance_schema", "sys"):
+                if db.name in (
+                    "information_schema",
+                    "mysql",
+                    "performance_schema",
+                    "sys",
+                ):
                     system_schemas.append(db)
                 else:
                     user_schemas.append(db)
-            
+
             return user_schemas + system_schemas
-        
+
         return databases
-    
+
     async def get_schemas(self, database: str) -> List[DatabaseObject]:
         """Get list of schemas in a database"""
         return await self.adapter.get_schemas(database)
-    
+
     async def get_tables(self, schema: str) -> List[DatabaseObject]:
         """Get list of tables in a schema"""
         return await self.adapter.get_tables(schema)
-    
+
     async def get_table_columns(self, schema: str, table: str) -> List[DatabaseObject]:
         """Get list of columns in a table"""
         return await self.adapter.get_table_columns(schema, table)
-    
+
     async def test_connection(self) -> bool:
         """Test database connection"""
         try:
@@ -936,7 +995,7 @@ class DatabaseConnection:
             return result.result_type == QueryResultType.RESULTSET
         except:
             return False
-    
+
     def test_connection_sync(self) -> tuple[bool, str]:
         """Test database connection synchronously - returns (success, message)"""
         return self.adapter.test_connection_sync()
@@ -952,7 +1011,9 @@ class ConnectionManager:
     def __init__(self):
         self.connections: Dict[str, DatabaseConnection] = {}
 
-    def add_connection(self, name: str, profile: ConnectionProfile) -> DatabaseConnection:
+    def add_connection(
+        self, name: str, profile: ConnectionProfile
+    ) -> DatabaseConnection:
         """Add a new connection"""
         connection = DatabaseConnection(profile)
         self.connections[name] = connection

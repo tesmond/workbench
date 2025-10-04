@@ -2,21 +2,18 @@
 Main application entry point for MySQL Workbench Python Edition.
 """
 
-import sys
-import os
-import logging
 import asyncio
+import logging
+import sys
 from pathlib import Path
 from typing import Optional
 
+from PyQt6.QtCore import Qt, QTimer, QtMsgType, qInstallMessageHandler
+from PyQt6.QtGui import QColor, QFont, QIcon, QPalette, QPixmap
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSplashScreen
-from PyQt6.QtCore import Qt, QTimer, qInstallMessageHandler, QtMsgType
-from PyQt6.QtGui import QPixmap, QFont, QPalette, QColor, QIcon
 
 from .config import settings
 from .gui import MainWindow
-from .sql_editor import SQLEditor
-from .database_browser import DatabaseBrowser
 
 
 def setup_logging():

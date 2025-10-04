@@ -2,17 +2,18 @@
 Application configuration management using Pydantic settings.
 """
 
-from typing import Dict, List, Optional
+import json
+from enum import Enum
 from pathlib import Path
+from typing import Dict, List, Optional
+
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import json
-import os
-from enum import Enum
 
 
 class DatabaseType(str, Enum):
     """Supported database types"""
+
     MYSQL = "mysql"
     POSTGRESQL = "postgresql"
 
@@ -69,13 +70,9 @@ class ApplicationSettings(BaseSettings):
     version: str = "1.0.0"
 
     # File paths
-    config_dir: Path = Field(
-        default_factory=lambda: Path.home() / ".workbench"
-    )
+    config_dir: Path = Field(default_factory=lambda: Path.home() / ".workbench")
     connections_file: Path = Field(
-        default_factory=lambda: Path.home()
-        / ".workbench"
-        / "connections.json"
+        default_factory=lambda: Path.home() / ".workbench" / "connections.json"
     )
 
     # Application settings

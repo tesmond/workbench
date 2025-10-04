@@ -2,63 +2,49 @@
 Advanced SQL editor with syntax highlighting and query execution.
 """
 
-import re
 import asyncio
-from typing import Optional, List, Dict, Any
-from enum import Enum
+import re
+from typing import Any, Dict, List, Optional
 
+from PyQt6.QtCore import (
+    QAbstractTableModel,
+    QModelIndex,
+    Qt,
+    QTimer,
+    QVariant,
+    pyqtSignal,
+)
+from PyQt6.QtGui import (
+    QColor,
+    QFont,
+    QKeySequence,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+    QTextDocument,
+)
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
     QHBoxLayout,
-    QSplitter,
-    QTextEdit,
+    QLabel,
+    QMessageBox,
     QPushButton,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
-    QLabel,
-    QProgressBar,
-    QMessageBox,
-    QHeaderView,
-    QAbstractScrollArea,
-    QFrame,
-    QToolButton,
-    QMenu,
-    QApplication,
-)
-from PyQt6.QtCore import (
-    Qt,
-    pyqtSignal,
-    QThread,
-    QTimer,
-    QSize,
-    QAbstractTableModel,
-    QModelIndex,
-    QVariant,
-)
-from PyQt6.QtGui import (
-    QFont,
-    QTextCharFormat,
-    QColor,
-    QSyntaxHighlighter,
-    QTextCursor,
-    QKeySequence,
-    QAction,
-    QIcon,
-    QPalette,
-    QTextDocument,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 try:
     # Try to import QScintilla for advanced editing
-    from PyQt6.Qsci import QsciScintilla, QsciLexerSQL, QsciAPIs
+    from PyQt6.Qsci import QsciAPIs, QsciLexerSQL, QsciScintilla
 
     QSCINTILLA_AVAILABLE = True
 except ImportError:
     QSCINTILLA_AVAILABLE = False
 
-from .database import connection_manager, MySQLConnection, QueryResult, QueryResultType
+from .database import QueryResult, QueryResultType, connection_manager
 
 
 class SQLSyntaxHighlighter(QSyntaxHighlighter):
@@ -543,12 +529,14 @@ class SQLResultsWidget(QWidget):
         # Update status
         self.row_count_label.setText(f"{len(result.data)} rows")
         self.execution_time_label.setText(f"{result.execution_time:.3f}s")
-        self.status_label.setText(f"Query executed successfully - {len(result.data)} rows returned")
+        self.status_label.setText(
+            f"Query executed successfully - {len(result.data)} rows returned"
+        )
 
     def show_update_result(self, result: QueryResult):
         """Display UPDATE/INSERT/DELETE results"""
         message = result.message or f"{result.affected_rows} rows affected"
-        
+
         # Update status
         self.execution_time_label.setText(f"{result.execution_time:.3f}s")
         self.status_label.setText(f"Query executed successfully - {message}")

@@ -2,66 +2,53 @@
 Main application window and UI framework.
 """
 
-import sys
-import asyncio
-from typing import Optional, Dict, Any
 from pathlib import Path
+from typing import Dict, Optional
 
-from PyQt6.QtWidgets import (
-    QApplication,
-    QMainWindow,
-    QVBoxLayout,
-    QHBoxLayout,
-    QSplitter,
-    QTabWidget,
-    QStatusBar,
-    QMenuBar,
-    QToolBar,
-    QWidget,
-    QPushButton,
-    QLabel,
-    QMessageBox,
-    QFileDialog,
-    QDockWidget,
-    QTreeWidget,
-    QTreeWidgetItem,
-    QTextEdit,
-    QDialog,
-    QDialogButtonBox,
-    QFormLayout,
-    QLineEdit,
-    QSpinBox,
-    QCheckBox,
-    QComboBox,
-    QGroupBox,
-    QProgressBar,
-    QProgressDialog,
-)
 from PyQt6.QtCore import (
+    QSettings,
     Qt,
     QTimer,
-    QThread,
     pyqtSignal,
-    QSettings,
-    QSize,
-    QPoint,
-    pyqtSlot,
 )
 from PyQt6.QtGui import (
     QAction,
-    QIcon,
     QFont,
-    QPixmap,
+    QIcon,
     QKeySequence,
-    QShortcut,
-    QCloseEvent,
-    QColor,
+)
+from PyQt6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QDockWidget,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QProgressDialog,
+    QPushButton,
+    QSpinBox,
+    QSplitter,
+    QStatusBar,
+    QTabWidget,
+    QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
-from .config import settings, ConnectionProfile, DatabaseType
-from .database import connection_manager, MySQLConnection, DatabaseObject
-from .sql_editor import SQLEditor
+from .config import ConnectionProfile, DatabaseType, settings
+from .database import DatabaseObject, MySQLConnection, connection_manager
 from .database_browser import DatabaseBrowser
+from .sql_editor import SQLEditor
 
 
 class ConnectionDialog(QDialog):
@@ -82,7 +69,7 @@ class ConnectionDialog(QDialog):
         self.setWindowTitle("Database Connection")
         self.setModal(True)
         self.setMinimumSize(400, 500)
-        
+
         # Set dialog icon
         try:
             icon_path = Path(__file__).parent.parent.parent / "icon.png"
@@ -99,13 +86,15 @@ class ConnectionDialog(QDialog):
         basic_layout = QFormLayout(basic_group)
 
         self.name_edit = QLineEdit()
-        
+
         # Database type dropdown
         self.database_type_combo = QComboBox()
         self.database_type_combo.addItem("MySQL", DatabaseType.MYSQL)
         self.database_type_combo.addItem("PostgreSQL", DatabaseType.POSTGRESQL)
-        self.database_type_combo.currentTextChanged.connect(self.on_database_type_changed)
-        
+        self.database_type_combo.currentTextChanged.connect(
+            self.on_database_type_changed
+        )
+
         self.host_edit = QLineEdit()
         self.port_spin = QSpinBox()
         self.port_spin.setRange(1, 65535)
@@ -177,7 +166,7 @@ class ConnectionDialog(QDialog):
         )
         if file_path:
             self.ssh_key_edit.setText(file_path)
-    
+
     def on_database_type_changed(self, db_type_text: str):
         """Handle database type change to update default port"""
         if db_type_text == "MySQL":
@@ -191,14 +180,14 @@ class ConnectionDialog(QDialog):
             return
 
         self.name_edit.setText(self.connection_profile.name)
-        
+
         # Set database type
-        db_type = getattr(self.connection_profile, 'database_type', DatabaseType.MYSQL)
+        db_type = getattr(self.connection_profile, "database_type", DatabaseType.MYSQL)
         if db_type == DatabaseType.MYSQL:
             self.database_type_combo.setCurrentText("MySQL")
         else:
             self.database_type_combo.setCurrentText("PostgreSQL")
-            
+
         self.host_edit.setText(self.connection_profile.host)
         self.port_spin.setValue(self.connection_profile.port)
         self.username_edit.setText(self.connection_profile.username)
@@ -219,7 +208,7 @@ class ConnectionDialog(QDialog):
         """Get connection profile from form data"""
         # Get selected database type
         selected_db_type = self.database_type_combo.currentData()
-        
+
         return ConnectionProfile(
             name=self.name_edit.text(),
             database_type=selected_db_type,
@@ -435,7 +424,7 @@ class MainWindow(QMainWindow):
             else:
                 # Fallback: try to get icon from application
                 app = QApplication.instance()
-                if app and hasattr(app, 'windowIcon'):
+                if app and hasattr(app, "windowIcon"):
                     app_icon = app.windowIcon()
                     if not app_icon.isNull():
                         self.setWindowIcon(app_icon)
@@ -470,25 +459,25 @@ class MainWindow(QMainWindow):
         # Welcome tab
         welcome_widget = QWidget()
         welcome_layout = QVBoxLayout(welcome_widget)
-        
+
         welcome_label = QLabel("Welcome to MySQL Workbench - Python Edition")
         welcome_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         welcome_label.setStyleSheet("font-size: 16px; font-weight: bold; margin: 20px;")
-        
+
         new_conn_btn = QPushButton("New Connection")
         new_conn_btn.clicked.connect(self.new_connection)
         new_conn_btn.setMaximumWidth(200)
-        
+
         open_sql_btn = QPushButton("Open SQL Script")
         open_sql_btn.clicked.connect(self.open_sql_file)
         open_sql_btn.setMaximumWidth(200)
-        
+
         welcome_layout.addStretch()
         welcome_layout.addWidget(welcome_label)
         welcome_layout.addWidget(new_conn_btn, alignment=Qt.AlignmentFlag.AlignCenter)
         welcome_layout.addWidget(open_sql_btn, alignment=Qt.AlignmentFlag.AlignCenter)
         welcome_layout.addStretch()
-        
+
         self.tab_widget.addTab(welcome_widget, "Welcome")
         self.main_splitter.addWidget(self.tab_widget)
 
@@ -631,16 +620,16 @@ class MainWindow(QMainWindow):
         dialog = ConnectionDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             profile = dialog.get_connection_profile()
-            
+
             # Save connection profile
             settings.add_connection(profile)
-            
+
             # Create connection
             connection = connection_manager.add_connection(profile.name, profile)
-            
+
             # Add to browser
             self.db_browser.add_connection(profile.name, connection)
-            
+
             # Try to connect
             self.connect_to_database(profile.name)
 
@@ -720,13 +709,16 @@ class MainWindow(QMainWindow):
             try:
                 # Get database type and connection info
                 db_type = connection.profile.database_type.name
-                if hasattr(connection.adapter, 'connection') and connection.adapter.connection:
-                    if db_type == 'MYSQL':
+                if (
+                    hasattr(connection.adapter, "connection")
+                    and connection.adapter.connection
+                ):
+                    if db_type == "MYSQL":
                         server_info = connection.adapter.connection.get_server_info()
                         self.server_info_label.setText(f"MySQL {server_info}")
                     else:
                         # For PostgreSQL, show basic connection info
-                        self.server_info_label.setText(f"PostgreSQL Connected")
+                        self.server_info_label.setText("PostgreSQL Connected")
                     self.server_info_label.show()
             except:
                 pass
@@ -743,7 +735,7 @@ class MainWindow(QMainWindow):
 
     def on_connection_failed(self, connection_name: str, error_message: str):
         """Handle failed database connection"""
-        self.status_label.setText(f"Connection failed")
+        self.status_label.setText("Connection failed")
         self.connection_label.setText("Not connected")
 
         # Clear current connection
@@ -779,7 +771,7 @@ class MainWindow(QMainWindow):
         if connection_name:
             tab_name = f"Query - {connection_name}"
         else:
-            tab_name = f"Query (No Connection)"
+            tab_name = "Query (No Connection)"
 
         tab_index = self.tab_widget.addTab(sql_editor, tab_name)
         self.tab_widget.setCurrentIndex(tab_index)
@@ -843,8 +835,6 @@ class MainWindow(QMainWindow):
         qt_settings.setValue("geometry", self.saveGeometry())
         qt_settings.setValue("windowState", self.saveState())
 
-
-
     def closeEvent(self, a0):
         """Handle application close"""
         if a0 is None:
@@ -859,7 +849,9 @@ class MainWindow(QMainWindow):
                 try:
                     connection.disconnect_sync()
                 except Exception as conn_error:
-                    print(f"Error disconnecting {connection.profile.name}: {conn_error}")
+                    print(
+                        f"Error disconnecting {connection.profile.name}: {conn_error}"
+                    )
         except Exception as e:
             print(f"Error during cleanup: {e}")
 

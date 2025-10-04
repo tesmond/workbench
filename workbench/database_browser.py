@@ -4,39 +4,35 @@ Enhanced database browser with full MySQL object support.
 
 import asyncio
 import logging
-from typing import Optional, List, Dict, Any
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
+from PyQt6.QtCore import (
+    QObject,
+    QRunnable,
+    Qt,
+    QThreadPool,
+    QTimer,
+    pyqtSignal,
+    pyqtSlot,
+)
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
+    QDialog,
     QDockWidget,
-    QTreeWidget,
-    QTreeWidgetItem,
-    QVBoxLayout,
     QHBoxLayout,
-    QWidget,
-    QPushButton,
     QLineEdit,
     QMenu,
     QMessageBox,
-    QDialog,
-    QApplication,
     QProgressBar,
-    QLabel,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import (
-    Qt,
-    pyqtSignal,
-    QThread,
-    QTimer,
-    QObject,
-    QRunnable,
-    QThreadPool,
-    pyqtSlot,
-)
-from PyQt6.QtGui import QIcon, QAction, QPixmap
 
-from .database import connection_manager, MySQLConnection, DatabaseObject
-
+from .database import DatabaseObject, MySQLConnection, connection_manager
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +189,7 @@ class DatabaseBrowserWorker(QRunnable):
 
                 except Exception as e:
                     self.signals.error.emit(f"Failed to load schemas: {str(e)}")
-            
+
             elif self.operation == "load_databases":
                 # Load databases for PostgreSQL
                 try:
@@ -206,7 +202,7 @@ class DatabaseBrowserWorker(QRunnable):
 
                 except Exception as e:
                     self.signals.error.emit(f"Failed to load databases: {str(e)}")
-            
+
             elif self.operation == "load_database_schemas":
                 # Load schemas within a PostgreSQL database
                 database = self.kwargs.get("database")
@@ -219,7 +215,9 @@ class DatabaseBrowserWorker(QRunnable):
                     self.signals.database_schemas_loaded.emit(database, schemas)
 
                 except Exception as e:
-                    self.signals.error.emit(f"Failed to load schemas for database {database}: {str(e)}")
+                    self.signals.error.emit(
+                        f"Failed to load schemas for database {database}: {str(e)}"
+                    )
 
             elif self.operation == "load_tables":
                 schema = self.kwargs.get("schema")
@@ -230,8 +228,10 @@ class DatabaseBrowserWorker(QRunnable):
                     asyncio.set_event_loop(loop)
                     tables = loop.run_until_complete(connection.get_tables(schema))
                     loop.close()
-                    
-                    logger.info(f"Worker loaded {len(tables)} tables for schema: {schema}")
+
+                    logger.info(
+                        f"Worker loaded {len(tables)} tables for schema: {schema}"
+                    )
                     self.signals.tables_loaded.emit(schema, tables)
 
                 except Exception as e:
@@ -415,29 +415,44 @@ class DatabaseBrowser(QDockWidget):
 
         # Check database type to determine loading strategy
         connection = connection_manager.get_connection(conn_item.connection_name)
-        if connection and hasattr(connection, 'profile') and hasattr(connection.profile, 'database_type'):
+        if (
+            connection
+            and hasattr(connection, "profile")
+            and hasattr(connection.profile, "database_type")
+        ):
             from .config import DatabaseType
+
             if connection.profile.database_type == DatabaseType.POSTGRESQL:
                 # For PostgreSQL: Load databases first
-                worker = DatabaseBrowserWorker(conn_item.connection_name, "load_databases")
+                worker = DatabaseBrowserWorker(
+                    conn_item.connection_name, "load_databases"
+                )
                 worker.signals.databases_loaded.connect(
                     lambda databases: self.on_databases_loaded(conn_item, databases)
                 )
-                worker.signals.error.connect(lambda error: self.on_load_error(conn_item, error))
+                worker.signals.error.connect(
+                    lambda error: self.on_load_error(conn_item, error)
+                )
             else:
                 # For MySQL: Load schemas directly
-                worker = DatabaseBrowserWorker(conn_item.connection_name, "load_schemas")
+                worker = DatabaseBrowserWorker(
+                    conn_item.connection_name, "load_schemas"
+                )
                 worker.signals.schemas_loaded.connect(
                     lambda schemas: self.on_schemas_loaded(conn_item, schemas)
                 )
-                worker.signals.error.connect(lambda error: self.on_load_error(conn_item, error))
+                worker.signals.error.connect(
+                    lambda error: self.on_load_error(conn_item, error)
+                )
         else:
             # Default behavior for MySQL
             worker = DatabaseBrowserWorker(conn_item.connection_name, "load_schemas")
             worker.signals.schemas_loaded.connect(
                 lambda schemas: self.on_schemas_loaded(conn_item, schemas)
             )
-            worker.signals.error.connect(lambda error: self.on_load_error(conn_item, error))
+            worker.signals.error.connect(
+                lambda error: self.on_load_error(conn_item, error)
+            )
 
         self.thread_pool.start(worker)
 
@@ -478,7 +493,9 @@ class DatabaseBrowser(QDockWidget):
         conn_item.loaded = True
         conn_item.setExpanded(True)
 
-    def on_databases_loaded(self, conn_item: DatabaseTreeItem, databases: List[DatabaseObject]):
+    def on_databases_loaded(
+        self, conn_item: DatabaseTreeItem, databases: List[DatabaseObject]
+    ):
         """Handle databases loaded for PostgreSQL"""
         conn_item.takeChildren()
 
@@ -486,7 +503,9 @@ class DatabaseBrowser(QDockWidget):
             db_item = DatabaseTreeItem(conn_item)
             # For PostgreSQL databases, we need to override the object type since they're returned as 'database'
             # but the UI expects them to behave like expandable containers
-            db_item.object_type = DatabaseObjectType.SCHEMA  # Reuse schema type for expandability
+            db_item.object_type = (
+                DatabaseObjectType.SCHEMA
+            )  # Reuse schema type for expandability
             db_item.connection_name = conn_item.connection_name
             db_item.object_name = database.name
             db_item.setText(0, database.name)
@@ -508,15 +527,23 @@ class DatabaseBrowser(QDockWidget):
         loading_item.setText(0, "Loading schemas...")
 
         # Load schemas for this database
-        worker = DatabaseBrowserWorker(db_item.connection_name, "load_database_schemas", database=db_item.object_name)
+        worker = DatabaseBrowserWorker(
+            db_item.connection_name,
+            "load_database_schemas",
+            database=db_item.object_name,
+        )
         worker.signals.database_schemas_loaded.connect(
-            lambda database, schemas: self.on_database_schemas_loaded(db_item, database, schemas)
+            lambda database, schemas: self.on_database_schemas_loaded(
+                db_item, database, schemas
+            )
         )
         worker.signals.error.connect(lambda error: self.on_load_error(db_item, error))
 
         self.thread_pool.start(worker)
 
-    def on_database_schemas_loaded(self, db_item: DatabaseTreeItem, database: str, schemas: List[DatabaseObject]):
+    def on_database_schemas_loaded(
+        self, db_item: DatabaseTreeItem, database: str, schemas: List[DatabaseObject]
+    ):
         """Handle schemas loaded for a PostgreSQL database"""
         db_item.takeChildren()
 
@@ -601,20 +628,23 @@ class DatabaseBrowser(QDockWidget):
     def on_load_error(self, item: DatabaseTreeItem, error: str):
         """Handle loading error"""
         # Log the full error for debugging
-        logger.error(f"Database browser load error for item '{item.text(0) if item else 'unknown'}': {error}")
-        
+        logger.error(
+            f"Database browser load error for item '{item.text(0) if item else 'unknown'}': {error}"
+        )
+
         if item:
             item.takeChildren()
             error_item = DatabaseTreeItem(item)
             error_item.setText(0, f"❌ Error: {error}")
-        
+
         # Also show a message box for critical errors
         from PyQt6.QtWidgets import QMessageBox
+
         if "Failed to load schemas" in error or "Failed to load databases" in error:
             QMessageBox.warning(
-                self.parent() if hasattr(self, 'parent') else None,
-                "Database Loading Error", 
-                f"Failed to load database objects:\n\n{error}\n\nCheck the connection settings and server availability."
+                self.parent() if hasattr(self, "parent") else None,
+                "Database Loading Error",
+                f"Failed to load database objects:\n\n{error}\n\nCheck the connection settings and server availability.",
             )
 
     def find_folder_item(
@@ -662,14 +692,25 @@ class DatabaseBrowser(QDockWidget):
         if item.needs_loading():
             if item.object_type == DatabaseObjectType.SCHEMA:
                 # For PostgreSQL databases, check if this is a database that needs schema loading
-                connection = connection_manager.get_connection(item.connection_name) if item.connection_name else None
-                if connection and hasattr(connection, 'profile') and hasattr(connection.profile, 'database_type'):
+                connection = (
+                    connection_manager.get_connection(item.connection_name)
+                    if item.connection_name
+                    else None
+                )
+                if (
+                    connection
+                    and hasattr(connection, "profile")
+                    and hasattr(connection.profile, "database_type")
+                ):
                     from .config import DatabaseType
+
                     if connection.profile.database_type == DatabaseType.POSTGRESQL:
                         # Check if parent is a connection (meaning this is a database, not a schema)
                         parent = item.parent()
-                        if (isinstance(parent, DatabaseTreeItem) and 
-                            parent.object_type == DatabaseObjectType.CONNECTION):
+                        if (
+                            isinstance(parent, DatabaseTreeItem)
+                            and parent.object_type == DatabaseObjectType.CONNECTION
+                        ):
                             # This is a database under a PostgreSQL connection
                             self.load_database_schemas(item)
                             return
@@ -749,14 +790,14 @@ class DatabaseBrowser(QDockWidget):
             menu.addAction(connect_action)
 
             menu.addSeparator()
-            
+
             # Add Edit Connection option
             edit_action = QAction("Edit Connection...", menu)
             edit_action.triggered.connect(
                 lambda: self.edit_connection(item.connection_name)
             )
             menu.addAction(edit_action)
-            
+
             # Add Delete Connection option
             delete_action = QAction("Delete Connection...", menu)
             delete_action.triggered.connect(
@@ -846,26 +887,29 @@ class DatabaseBrowser(QDockWidget):
         """Edit the selected connection profile"""
         from .config import settings
         from .gui import ConnectionDialog
-        
+
         connection_profile = settings.get_connection(connection_name)
         if not connection_profile:
-            QMessageBox.warning(self, "Error", f"Connection profile '{connection_name}' not found.")
+            QMessageBox.warning(
+                self, "Error", f"Connection profile '{connection_name}' not found."
+            )
             return
-        
+
         # Open connection dialog in edit mode
         dialog = ConnectionDialog(self, connection_profile)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             # Update the connection profile
             updated_profile = dialog.get_connection_profile()
-            
+
             # Remove old connection
             settings.remove_connection(connection_name)
-            
+
             # Add updated connection
             settings.add_connection(updated_profile)
-            
+
             # Update connection manager
             from .database import connection_manager
+
             if connection_name in connection_manager.connections:
                 # Close old connection
                 old_connection = connection_manager.connections[connection_name]
@@ -875,10 +919,10 @@ class DatabaseBrowser(QDockWidget):
                     except:
                         pass
                 del connection_manager.connections[connection_name]
-            
+
             # Add new connection
             connection_manager.add_connection(updated_profile.name, updated_profile)
-            
+
             # Refresh displays
             self.refresh_connections()
 
@@ -893,11 +937,11 @@ class DatabaseBrowser(QDockWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        
+
         if reply == QMessageBox.StandardButton.Yes:
             from .config import settings
             from .database import connection_manager
-            
+
             # Disconnect if currently connected
             connection = connection_manager.get_connection(connection_name)
             if connection and connection.is_connected:
@@ -905,18 +949,22 @@ class DatabaseBrowser(QDockWidget):
                     asyncio.run(connection.disconnect())
                 except:
                     pass
-            
+
             # Remove from connection manager
             if connection_name in connection_manager.connections:
                 del connection_manager.connections[connection_name]
-            
+
             # Remove from settings
             settings.remove_connection(connection_name)
-            
+
             # Refresh displays
             self.refresh_connections()
-            
-            QMessageBox.information(self, "Connection Deleted", f"Connection '{connection_name}' has been deleted.")
+
+            QMessageBox.information(
+                self,
+                "Connection Deleted",
+                f"Connection '{connection_name}' has been deleted.",
+            )
 
     def filter_objects(self, filter_text: str):
         """Filter tree items by text"""
