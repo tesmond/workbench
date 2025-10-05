@@ -556,23 +556,6 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("Ready")
         self.status_bar.addWidget(self.status_label)
 
-        # Connection status with icon
-        connection_widget = QWidget()
-        connection_layout = QHBoxLayout(connection_widget)
-        connection_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Connection status indicator (colored circle)
-        self.connection_indicator = QLabel("●")
-        self.connection_indicator.setStyleSheet("color: red; font-size: 12px;")
-        self.connection_indicator.setToolTip("Connection Status")
-
-        self.connection_label = QLabel("No connections")
-
-        connection_layout.addWidget(self.connection_indicator)
-        connection_layout.addWidget(self.connection_label)
-
-        self.status_bar.addPermanentWidget(connection_widget)
-
         # Server info label (hidden initially)
         self.server_info_label = QLabel("")
         self.server_info_label.hide()
@@ -611,8 +594,104 @@ class MainWindow(QMainWindow):
             if item.object_type == DatabaseObjectType.TABLE:
                 # Create SELECT query for table
                 if item.schema_name and item.object_name and item.connection_name:
-                    sql_editor = self.new_query_tab(item.connection_name)
-                    query = f"SELECT * FROM `{item.schema_name}`.`{item.object_name}` LIMIT 1000;"
+                    # Get database type to determine proper quoting
+                    connection = connection_manager.get_connection(item.connection_name)
+                    if connection and hasattr(connection, "profile"):
+                        if connection.profile.database_type == DatabaseType.POSTGRESQL:
+                            # PostgreSQL uses double quotes for identifiers
+                            # Extract database name if present in schema_name
+                            schema_parts = item.schema_name.split(".")
+                            if len(schema_parts) == 2:
+                                db_name, schema_name = schema_parts
+                                # Check if connection is to the correct database
+                                current_db = (
+                                    connection.profile.default_schema or "postgres"
+                                )
+                                if current_db != db_name:
+                                    # Ask user if they want to switch databases
+                                    reply = QMessageBox.question(
+                                        self,
+                                        "Switch Database?",
+                                        f"The table '{item.object_name}' is in database '{db_name}',\n"
+                                        f"but your connection is configured for '{current_db}'.\n\n"
+                                        f"Would you like to switch to database '{db_name}'?\n\n"
+                                        f"(This will update your connection profile and reconnect)",
+                                        QMessageBox.StandardButton.Yes
+                                        | QMessageBox.StandardButton.No,
+                                        QMessageBox.StandardButton.Yes,
+                                    )
+
+                                    if reply == QMessageBox.StandardButton.Yes:
+                                        # Update the profile
+                                        connection.profile.default_schema = db_name
+                                        settings.update_connection(connection.profile)
+
+                                        # Reconnect to the new database
+                                        QMessageBox.information(
+                                            self,
+                                            "Reconnecting",
+                                            f"Reconnecting to database '{db_name}'...\n"
+                                            f"Please wait for the connection to complete.",
+                                        )
+
+                                        # Disconnect and reconnect
+                                        import asyncio
+
+                                        loop = asyncio.new_event_loop()
+                                        asyncio.set_event_loop(loop)
+                                        try:
+                                            loop.run_until_complete(
+                                                connection.disconnect()
+                                            )
+                                            loop.run_until_complete(
+                                                connection.connect()
+                                            )
+                                        finally:
+                                            loop.close()
+
+                                        # Refresh the browser
+                                        self.db_browser.refresh_connection(
+                                            item.connection_name
+                                        )
+
+                                        # Now create the query tab
+                                        sql_editor = self.new_query_tab(
+                                            item.connection_name
+                                        )
+                                        query = f'SELECT * FROM "{schema_name}"."{item.object_name}" LIMIT 1000;'
+                                        sql_editor.set_text(query)
+                                    else:
+                                        # User declined, show informational message
+                                        sql_editor = self.new_query_tab(
+                                            item.connection_name
+                                        )
+                                        query = f'''-- NOTE: This table is in database '{db_name}'
+-- but your connection is configured for '{current_db}'.
+-- The query below will fail unless you switch databases.
+-- 
+-- To switch: Double-click the table again and choose "Yes" when prompted.
+-- 
+-- Query for database {db_name}:
+SELECT * FROM "{schema_name}"."{item.object_name}" LIMIT 1000;'''
+                                        sql_editor.set_text(query)
+                                    return
+
+                            # If we get here, database matches or no database context
+                            sql_editor = self.new_query_tab(item.connection_name)
+                            if len(schema_parts) == 2:
+                                db_name, schema_name = schema_parts
+                                query = f'SELECT * FROM "{schema_name}"."{item.object_name}" LIMIT 1000;'
+                            else:
+                                query = f'SELECT * FROM "{item.schema_name}"."{item.object_name}" LIMIT 1000;'
+                        else:
+                            # MySQL uses backticks
+                            sql_editor = self.new_query_tab(item.connection_name)
+                            query = f"SELECT * FROM `{item.schema_name}`.`{item.object_name}` LIMIT 1000;"
+                    else:
+                        # Fallback to MySQL style
+                        sql_editor = self.new_query_tab(item.connection_name)
+                        query = f"SELECT * FROM `{item.schema_name}`.`{item.object_name}` LIMIT 1000;"
+
                     sql_editor.set_text(query)
 
     def new_connection(self):
@@ -644,11 +723,6 @@ class MainWindow(QMainWindow):
 
         # Show connecting status
         self.status_label.setText(f"Connecting to {connection_name}...")
-        self.connection_label.setText("Connecting...")
-
-        # Update connection indicator to yellow/orange (connecting)
-        self.connection_indicator.setStyleSheet("color: orange; font-size: 12px;")
-        self.connection_indicator.setToolTip(f"Connecting to {connection_name}")
 
         # Show progress dialog for connection
         progress = QProgressDialog(
@@ -694,14 +768,9 @@ class MainWindow(QMainWindow):
     def on_connection_established(self, connection_name: str):
         """Handle successful database connection"""
         self.status_label.setText(f"Connected to {connection_name}")
-        self.connection_label.setText(f"{connection_name}")
 
         # Track current connection
         self.current_connection = connection_name
-
-        # Update connection indicator to green
-        self.connection_indicator.setStyleSheet("color: green; font-size: 12px;")
-        self.connection_indicator.setToolTip(f"Connected to {connection_name}")
 
         # Get server info and show it
         connection = connection_manager.get_connection(connection_name)
@@ -720,7 +789,7 @@ class MainWindow(QMainWindow):
                         # For PostgreSQL, show basic connection info
                         self.server_info_label.setText("PostgreSQL Connected")
                     self.server_info_label.show()
-            except:
+            except Exception:
                 pass
 
         # Show success message briefly
@@ -736,14 +805,8 @@ class MainWindow(QMainWindow):
     def on_connection_failed(self, connection_name: str, error_message: str):
         """Handle failed database connection"""
         self.status_label.setText("Connection failed")
-        self.connection_label.setText("Not connected")
-
         # Clear current connection
         self.current_connection = None
-
-        # Update connection indicator to red
-        self.connection_indicator.setStyleSheet("color: red; font-size: 12px;")
-        self.connection_indicator.setToolTip("Not connected")
 
         # Hide server info
         self.server_info_label.hide()

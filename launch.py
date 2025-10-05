@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Launch script for MySQL Workbench Python Edition with error checking.
+Launch script for Workbench with error checking.
 """
 
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -55,7 +55,7 @@ def launch_application():
 
 def main():
     """Main launcher function"""
-    print("MySQL Workbench Python Edition - Launcher")
+    print("SQL Workbench - Launcher")
     print("=" * 45)
 
     # Check syntax first

@@ -460,6 +460,8 @@ class DatabaseBrowser(QDockWidget):
         self, conn_item: DatabaseTreeItem, schemas: List[DatabaseObject]
     ):
         """Handle schemas loaded"""
+        if not conn_item.connection_name:
+            return
         conn_item.takeChildren()
 
         for schema in schemas:
@@ -545,6 +547,8 @@ class DatabaseBrowser(QDockWidget):
         self, db_item: DatabaseTreeItem, database: str, schemas: List[DatabaseObject]
     ):
         """Handle schemas loaded for a PostgreSQL database"""
+        if not db_item.connection_name:
+            return
         db_item.takeChildren()
 
         for schema in schemas:
@@ -561,7 +565,7 @@ class DatabaseBrowser(QDockWidget):
 
             views_folder = DatabaseTreeItem(schema_item)
             views_folder.set_folder(
-                "Views", "views", db_item.connection_name, schema.name
+                "Views", "views", db_item.connection_name, schema_context
             )
 
             procedures_folder = DatabaseTreeItem(schema_item)
@@ -569,12 +573,12 @@ class DatabaseBrowser(QDockWidget):
                 "Stored Procedures",
                 "procedures",
                 db_item.connection_name,
-                schema.name,
+                schema_context,
             )
 
             functions_folder = DatabaseTreeItem(schema_item)
             functions_folder.set_folder(
-                "Functions", "functions", db_item.connection_name, schema.name
+                "Functions", "functions", db_item.connection_name, schema_context
             )
 
         db_item.loaded = True
@@ -592,6 +596,11 @@ class DatabaseBrowser(QDockWidget):
         for table in tables:
             table_item = DatabaseTreeItem(tables_folder)
             table_item.set_database_object(table, tables_folder.connection_name)
+
+            # For PostgreSQL, inherit the schema context from the parent folder
+            # This preserves the "database.schema" format needed for queries
+            if tables_folder.schema_name:
+                table_item.schema_name = tables_folder.schema_name
 
             # Add columns placeholder
             columns_item = DatabaseTreeItem(table_item)
@@ -651,22 +660,60 @@ class DatabaseBrowser(QDockWidget):
         self, folder_type: str, schema: str
     ) -> Optional[DatabaseTreeItem]:
         """Find a folder item by type and schema"""
+        # For PostgreSQL, schema might be in "database.schema" format
+        if "." in schema:
+            database_name, schema_name = schema.split(".", 1)
+        else:
+            database_name = None
+            schema_name = schema
+
         for i in range(self.tree.topLevelItemCount()):
             conn_item = self.tree.topLevelItem(i)
-            for j in range(conn_item.childCount()):
-                schema_item = conn_item.child(j)
-                if (
-                    isinstance(schema_item, DatabaseTreeItem)
-                    and schema_item.object_name == schema
-                ):
-                    for k in range(schema_item.childCount()):
-                        folder_item = schema_item.child(k)
-                        if (
-                            isinstance(folder_item, DatabaseTreeItem)
-                            and folder_item.object_type == DatabaseObjectType.FOLDER
-                            and folder_item.extra_data.get("folder_type") == folder_type
-                        ):
-                            return folder_item
+
+            # For PostgreSQL, we need to go through databases first
+            if database_name:
+                # Look for the database item
+                for j in range(conn_item.childCount()):
+                    db_item = conn_item.child(j)
+                    if (
+                        isinstance(db_item, DatabaseTreeItem)
+                        and db_item.object_name == database_name
+                    ):
+                        # Now look for the schema under this database
+                        for k in range(db_item.childCount()):
+                            schema_item = db_item.child(k)
+                            if (
+                                isinstance(schema_item, DatabaseTreeItem)
+                                and schema_item.object_name == schema_name
+                            ):
+                                # Now look for the folder under this schema
+                                for m in range(schema_item.childCount()):
+                                    folder_item = schema_item.child(m)
+                                    if (
+                                        isinstance(folder_item, DatabaseTreeItem)
+                                        and folder_item.object_type
+                                        == DatabaseObjectType.FOLDER
+                                        and folder_item.extra_data.get("folder_type")
+                                        == folder_type
+                                    ):
+                                        return folder_item
+            else:
+                # For MySQL and others, schemas are direct children of connections
+                for j in range(conn_item.childCount()):
+                    schema_item = conn_item.child(j)
+                    if (
+                        isinstance(schema_item, DatabaseTreeItem)
+                        and schema_item.object_name == schema_name
+                    ):
+                        for k in range(schema_item.childCount()):
+                            folder_item = schema_item.child(k)
+                            if (
+                                isinstance(folder_item, DatabaseTreeItem)
+                                and folder_item.object_type == DatabaseObjectType.FOLDER
+                                and folder_item.extra_data.get("folder_type")
+                                == folder_type
+                            ):
+                                return folder_item
         return None
 
     def find_table_item(self, schema: str, table: str) -> Optional[DatabaseTreeItem]:
@@ -752,12 +799,13 @@ class DatabaseBrowser(QDockWidget):
         if isinstance(item, DatabaseTreeItem):
             # Special handling for connections: connect if not already connected
             if item.object_type == DatabaseObjectType.CONNECTION:
-                connection = self.connections.get(item.connection_name)
-                if connection and not connection.is_connected:
-                    self.toggle_connection(item.connection_name)
-                else:
-                    # If already connected, just expand
-                    item.setExpanded(not item.isExpanded())
+                if item.connection_name:
+                    connection = self.connections.get(item.connection_name)
+                    if connection and not connection.is_connected:
+                        self.toggle_connection(item.connection_name)
+                    else:
+                        # If already connected, just expand
+                        item.setExpanded(not item.isExpanded())
             else:
                 self.object_double_clicked.emit(item)
 
@@ -772,7 +820,7 @@ class DatabaseBrowser(QDockWidget):
     def show_context_menu(self, position):
         """Show context menu for tree items"""
         item = self.tree.itemAt(position)
-        if not isinstance(item, DatabaseTreeItem):
+        if not isinstance(item, DatabaseTreeItem) or not item.connection_name:
             return
 
         menu = QMenu(self)
@@ -853,15 +901,39 @@ class DatabaseBrowser(QDockWidget):
 
     def generate_select_query(self, table_item: DatabaseTreeItem):
         """Generate SELECT query for table"""
-        if table_item.schema_name and table_item.object_name:
-            query = f"SELECT * FROM `{table_item.schema_name}`.`{table_item.object_name}` LIMIT 1000;"
+        if (
+            table_item.schema_name
+            and table_item.object_name
+            and table_item.connection_name
+        ):
+            # Get database type to determine proper quoting
+            connection = connection_manager.get_connection(table_item.connection_name)
+            if connection and hasattr(connection, "profile"):
+                from .config import DatabaseType
+
+                if connection.profile.database_type == DatabaseType.POSTGRESQL:
+                    # PostgreSQL uses double quotes for identifiers
+                    # Extract database name if present in schema_name
+                    schema_parts = table_item.schema_name.split(".")
+                    if len(schema_parts) == 2:
+                        db_name, schema_name = schema_parts
+                        query = f'SELECT * FROM "{schema_name}"."{table_item.object_name}" LIMIT 1000;'
+                    else:
+                        query = f'SELECT * FROM "{table_item.schema_name}"."{table_item.object_name}" LIMIT 1000;'
+                else:
+                    # MySQL uses backticks
+                    query = f"SELECT * FROM `{table_item.schema_name}`.`{table_item.object_name}` LIMIT 1000;"
+            else:
+                # Fallback to MySQL style
+                query = f"SELECT * FROM `{table_item.schema_name}`.`{table_item.object_name}` LIMIT 1000;"
 
             # Emit signal to parent to create new query tab
             # For now, copy to clipboard and show message
             from PyQt6.QtWidgets import QApplication
 
             clipboard = QApplication.clipboard()
-            clipboard.setText(query)
+            if clipboard:
+                clipboard.setText(query)
 
             QMessageBox.information(
                 self,
@@ -916,7 +988,7 @@ class DatabaseBrowser(QDockWidget):
                 if old_connection.is_connected:
                     try:
                         asyncio.run(old_connection.disconnect())
-                    except:
+                    except Exception:
                         pass
                 del connection_manager.connections[connection_name]
 
@@ -947,7 +1019,7 @@ class DatabaseBrowser(QDockWidget):
             if connection and connection.is_connected:
                 try:
                     asyncio.run(connection.disconnect())
-                except:
+                except Exception:
                     pass
 
             # Remove from connection manager
@@ -971,14 +1043,17 @@ class DatabaseBrowser(QDockWidget):
         # Simple filtering implementation
         for i in range(self.tree.topLevelItemCount()):
             conn_item = self.tree.topLevelItem(i)
-            self.filter_item_recursive(conn_item, filter_text.lower())
+            if conn_item:
+                self.filter_item_recursive(conn_item, filter_text.lower())
 
     def filter_item_recursive(self, item: QTreeWidgetItem, filter_text: str):
         """Recursively filter tree items"""
         if not filter_text:
             item.setHidden(False)
             for i in range(item.childCount()):
-                self.filter_item_recursive(item.child(i), filter_text)
+                child = item.child(i)
+                if child:
+                    self.filter_item_recursive(child, filter_text)
             return
 
         # Check if item text matches filter
@@ -989,9 +1064,10 @@ class DatabaseBrowser(QDockWidget):
         child_matches = False
         for i in range(item.childCount()):
             child = item.child(i)
-            self.filter_item_recursive(child, filter_text)
-            if not child.isHidden():
-                child_matches = True
+            if child:
+                self.filter_item_recursive(child, filter_text)
+                if not child.isHidden():
+                    child_matches = True
 
         # Hide item if neither it nor its children match
         item.setHidden(not matches and not child_matches)

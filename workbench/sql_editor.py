@@ -291,7 +291,18 @@ class SQLEditor(QWidget):
         if self.connection_name:
             connection = connection_manager.get_connection(self.connection_name)
             if connection and connection.is_connected:
-                self.connection_label.setText(f"Connected: {self.connection_name}")
+                db_name = "Unknown"
+                if hasattr(connection, "profile") and connection.profile.default_schema:
+                    db_name = connection.profile.default_schema
+                elif (
+                    hasattr(connection, "profile")
+                    and connection.profile.database_type.name == "POSTGRESQL"
+                ):
+                    db_name = "postgres"  # Default for PostgreSQL
+
+                self.connection_label.setText(
+                    f"Connected: {self.connection_name} ({db_name})"
+                )
                 self.execute_btn.setEnabled(True)
                 self.execute_current_btn.setEnabled(True)
             else:
@@ -474,15 +485,32 @@ class SQLResultsWidget(QWidget):
         # Status bar
         status_layout = QHBoxLayout()
         self.status_label = QLabel("Ready")
+
+        # Copy button for status text
+        self.copy_status_btn = QPushButton("📋")  # Copy emoji as icon
+        self.copy_status_btn.setToolTip("Copy status text to clipboard")
+        self.copy_status_btn.setFixedSize(24, 20)
+        self.copy_status_btn.clicked.connect(self.copy_status_to_clipboard)
+
         self.row_count_label = QLabel("")
         self.execution_time_label = QLabel("")
 
         status_layout.addWidget(self.status_label)
+        status_layout.addWidget(self.copy_status_btn)
         status_layout.addStretch()
         status_layout.addWidget(self.row_count_label)
         status_layout.addWidget(self.execution_time_label)
 
         layout.addLayout(status_layout)
+
+    def copy_status_to_clipboard(self):
+        """Copy the current status text to clipboard"""
+        status_text = self.status_label.text()
+        if status_text and status_text != "Ready":
+            from PyQt6.QtWidgets import QApplication
+
+            clipboard = QApplication.clipboard()
+            clipboard.setText(status_text)
 
     def show_result(self, result: QueryResult):
         """Display query result"""
@@ -499,6 +527,7 @@ class SQLResultsWidget(QWidget):
         """Display SELECT query results"""
         if not result.data or not result.columns:
             self.status_label.setText("Query returned no results")
+            self.copy_status_btn.setVisible(True)
             return
 
         # Create table widget
@@ -532,6 +561,7 @@ class SQLResultsWidget(QWidget):
         self.status_label.setText(
             f"Query executed successfully - {len(result.data)} rows returned"
         )
+        self.copy_status_btn.setVisible(True)
 
     def show_update_result(self, result: QueryResult):
         """Display UPDATE/INSERT/DELETE results"""
@@ -540,6 +570,7 @@ class SQLResultsWidget(QWidget):
         # Update status
         self.execution_time_label.setText(f"{result.execution_time:.3f}s")
         self.status_label.setText(f"Query executed successfully - {message}")
+        self.copy_status_btn.setVisible(True)
 
     def show_error(self, result: QueryResult):
         """Display error message"""
@@ -548,6 +579,7 @@ class SQLResultsWidget(QWidget):
             error_msg = f"Error {result.error_code}: {result.error_message}"
 
         self.status_label.setText(f"Query failed - {error_msg}")
+        self.copy_status_btn.setVisible(True)
 
         if result.execution_time:
             self.execution_time_label.setText(f"{result.execution_time:.3f}s")
@@ -558,3 +590,4 @@ class SQLResultsWidget(QWidget):
         self.row_count_label.clear()
         self.execution_time_label.clear()
         self.status_label.setText("Ready")
+        self.copy_status_btn.setVisible(False)

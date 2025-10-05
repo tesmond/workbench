@@ -690,10 +690,10 @@ class PostgreSQLAdapter(DatabaseAdapter):
             temp_connection = psycopg2.connect(**connect_params)
 
             query = """
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema = %s AND table_type = 'BASE TABLE'
-                ORDER BY table_name
+                SELECT tablename as table_name
+                FROM pg_tables
+                WHERE schemaname = %s
+                ORDER BY tablename
             """
 
             with temp_connection.cursor(
@@ -740,10 +740,10 @@ class PostgreSQLAdapter(DatabaseAdapter):
             f"PostgreSQL: Getting tables for schema '{schema}' using current connection"
         )
         query = """
-            SELECT table_name 
-            FROM information_schema.tables 
-            WHERE table_schema = %s AND table_type = 'BASE TABLE'
-            ORDER BY table_name
+            SELECT tablename as table_name
+            FROM pg_tables
+            WHERE schemaname = %s
+            ORDER BY tablename
         """
 
         if not self.connection or not self.is_connected:

@@ -126,6 +126,16 @@ class ApplicationSettings(BaseSettings):
         self.connections.append(connection)
         self.save_connections()
 
+    def update_connection(self, connection: ConnectionProfile):
+        """Update an existing connection profile"""
+        for i, conn in enumerate(self.connections):
+            if conn.name == connection.name:
+                self.connections[i] = connection
+                self.save_connections()
+                return
+        # If not found, add it
+        self.add_connection(connection)
+
     def remove_connection(self, connection_name: str):
         """Remove a connection profile by name"""
         self.connections = [
