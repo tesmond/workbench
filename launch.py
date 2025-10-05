@@ -34,7 +34,7 @@ def check_syntax():
 
 def launch_application():
     """Launch the main application"""
-    print("Launching MySQL Workbench Python Edition...")
+    print("Launching SQL Workbench...")
     try:
         # Import and run the application
         sys.path.insert(0, str(Path(__file__).parent))

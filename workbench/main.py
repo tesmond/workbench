@@ -1,5 +1,5 @@
 """
-Main application entry point for MySQL Workbench Python Edition.
+Main application entry point for SQL Workbench.
 """
 
 import asyncio
@@ -178,7 +178,7 @@ Loading...
             # Hide splash screen
             QTimer.singleShot(1000, self.hide_splash_screen)
 
-            logging.info("MySQL Workbench Python Edition started successfully")
+            logging.info("SQL Workbench started successfully")
 
         except Exception as e:
             logging.critical(f"Failed to initialize main window: {e}")

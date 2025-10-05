@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MySQL Workbench Python Edition
+SQL Workbench
 Main application entry point
 
 Copyright (c) 2025 - Python rewrite of MySQL Workbench
@@ -12,7 +12,6 @@ as published by the Free Software Foundation.
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add the package to the path

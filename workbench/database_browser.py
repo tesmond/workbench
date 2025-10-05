@@ -492,6 +492,9 @@ class DatabaseBrowser(QDockWidget):
                 "Functions", "functions", conn_item.connection_name, schema.name
             )
 
+            # Mark schema as loaded since it has all its folder children
+            schema_item.loaded = True
+
         conn_item.loaded = True
         conn_item.setExpanded(True)
 
@@ -580,6 +583,9 @@ class DatabaseBrowser(QDockWidget):
             functions_folder.set_folder(
                 "Functions", "functions", db_item.connection_name, schema_context
             )
+
+            # Mark schema as loaded since it has all its folder children
+            schema_item.loaded = True
 
         db_item.loaded = True
         db_item.setExpanded(True)
@@ -806,7 +812,15 @@ class DatabaseBrowser(QDockWidget):
                     else:
                         # If already connected, just expand
                         item.setExpanded(not item.isExpanded())
+            # For schemas and folders, just expand/collapse them
+            elif item.object_type in (
+                DatabaseObjectType.SCHEMA,
+                DatabaseObjectType.FOLDER,
+            ):
+                # Toggle expansion - this will automatically trigger on_item_expanded
+                item.setExpanded(not item.isExpanded())
             else:
+                # For tables and other objects, emit signal for query generation
                 self.object_double_clicked.emit(item)
 
                 # Auto-expand for containers
