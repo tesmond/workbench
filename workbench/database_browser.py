@@ -817,19 +817,48 @@ class DatabaseBrowser(QDockWidget):
                 DatabaseObjectType.SCHEMA,
                 DatabaseObjectType.FOLDER,
             ):
-                # Toggle expansion - this will automatically trigger on_item_expanded
+                # If schema has no children but is marked loaded (edge case), build its folder skeleton
+                if (
+                    item.object_type == DatabaseObjectType.SCHEMA
+                    and item.childCount() == 0
+                    and item.loaded
+                ):
+                    # Build default folder structure (fallback)
+                    self._ensure_schema_folder_structure(item)
+
+                # Toggle expansion; expansion signal will handle lazy loading when needed
                 item.setExpanded(not item.isExpanded())
             else:
                 # For tables and other objects, emit signal for query generation
                 self.object_double_clicked.emit(item)
 
-                # Auto-expand for containers
-                if item.object_type in [
-                    DatabaseObjectType.SCHEMA,
-                    DatabaseObjectType.FOLDER,
-                    DatabaseObjectType.TABLE,
-                ]:
-                    item.setExpanded(not item.isExpanded())
+    def _ensure_schema_folder_structure(self, schema_item: "DatabaseTreeItem"):
+        """Ensure a schema node has its standard folder children (Tables/Views/Stored Procedures/Functions).
+
+        This is a safety net in case the schema was marked loaded without children being added
+        (e.g., due to an earlier load interruption). Does nothing if children already exist.
+        """
+        if schema_item.childCount() > 0:
+            return
+
+        connection_name = getattr(schema_item, "connection_name", None)
+        schema_name = getattr(schema_item, "object_name", None)
+        if not connection_name or not schema_name:
+            return
+
+        # For PostgreSQL we might need database.schema context preserved in existing schema_name attribute
+        context_schema = getattr(schema_item, "schema_name", None) or schema_name
+
+        folders = [
+            ("Tables", "tables"),
+            ("Views", "views"),
+            ("Stored Procedures", "procedures"),
+            ("Functions", "functions"),
+        ]
+        for label, ftype in folders:
+            folder_item = DatabaseTreeItem(schema_item)
+            folder_item.set_folder(label, ftype, connection_name, context_schema)
+        schema_item.loaded = True
 
     def show_context_menu(self, position):
         """Show context menu for tree items"""

@@ -393,8 +393,8 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("MySQL Workbench - Python Edition (MySQL & PostgreSQL)")
-        self.setObjectName("MySQLWorkbenchMainWindow")
+        self.setWindowTitle("SQL Workbench")
+        self.setObjectName("SQLWorkbenchMainWindow")
         self.setMinimumSize(1000, 700)
         self.setup_window_icon()
 
@@ -460,7 +460,7 @@ class MainWindow(QMainWindow):
         welcome_widget = QWidget()
         welcome_layout = QVBoxLayout(welcome_widget)
 
-        welcome_label = QLabel("Welcome to MySQL Workbench - Python Edition")
+        welcome_label = QLabel("Welcome to SQL Workbench")
         welcome_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         welcome_label.setStyleSheet("font-size: 16px; font-weight: bold; margin: 20px;")
 
@@ -873,9 +873,9 @@ SELECT * FROM "{schema_name}"."{item.object_name}" LIMIT 1000;'''
         """Show about dialog"""
         QMessageBox.about(
             self,
-            "About MySQL Workbench Python",
-            "MySQL Workbench - Python Edition\n\n"
-            "A modern Python implementation of the MySQL Workbench\n"
+            "About SQL Workbench",
+            "SQL Workbench\n\n"
+            "A modern Python implementation of the SQL Workbench\n"
             "database administration and development tool.\n\n"
             "Version: 1.0.0\n"
             "License: GPL v2.0",

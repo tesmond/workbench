@@ -146,7 +146,7 @@ class Application(QApplication):
         # Add text to splash screen
         self.splash.showMessage(
             """
-MySQL Workbench - Python Edition
+SQL Workbench
 Version 1.0.0
 
 Loading...
