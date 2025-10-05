@@ -25,14 +25,34 @@ This project is a desktop application for browsing and managing SQL databases. I
 
 ## Installation
 
+### Install in development mode (recommended for development)
+
 ```bash
-pip install -r requirements.txt
+pip install -e .
+```
+
+### Install for production use
+
+```bash
+pip install .
+```
+
+### Install with development dependencies
+
+```bash
+pip install -e .[dev]
 ```
 
 ## Usage
 
 ```bash
 python run.py
+```
+
+Or after installation:
+
+```bash
+workbench
 ```
 
 ## License

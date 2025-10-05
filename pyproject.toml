@@ -3,19 +3,19 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mysql-workbench-python"
+name = "sql-workbench"
 dynamic = ["version"]
-description = "A modern Python implementation of MySQL Workbench"
+description = "A work-in-progress SQL database browser and management tool"
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [
-    {name = "MySQL Workbench Python Team", email = "mysql-workbench-python@example.com"},
+    {name = "Workbench Team", email = "workbench@example.com"},
 ]
 maintainers = [
-    {name = "MySQL Workbench Python Team", email = "mysql-workbench-python@example.com"},
+    {name = "Workbench Team", email = "workbench@example.com"},
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
@@ -29,53 +29,53 @@ classifiers = [
     "Topic :: Database :: Front-Ends",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-keywords = ["mysql", "database", "workbench", "sql", "gui", "admin"]
+keywords = ["mysql", "postgresql", "database", "workbench", "sql", "gui", "admin", "browser"]
 requires-python = ">=3.9"
 dependencies = [
-    "PyQt6>=6.6.0",
-    "QScintilla>=2.14.0",
-    "SQLAlchemy>=2.0.0",
-    "PyMySQL>=1.0.0",
-    "cryptography>=40.0.0",
-    "Pygments>=2.15.0",
-    "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
-    "aiofiles>=23.0.0",
-    "python-dateutil>=2.8.0",
-    "paramiko>=3.0.0",
-    "PyYAML>=6.0.0",
-    "rich>=13.0.0",
+    "PyQt6",
+    "PyQt6-Qt6",
+    "QScintilla",
+    "SQLAlchemy",
+    "PyMySQL",
+    "psycopg2-binary",
+    "cryptography",
+    "Pygments",
+    "pydantic",
+    "pydantic-settings",
+    "aiofiles",
+    "python-dateutil",
+    "packaging",
+    "typing-extensions",
+    "paramiko",
+    "PyYAML",
+    "rich",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-qt>=4.0.0",
-    "pytest-asyncio>=0.20.0",
-    "black>=23.0.0",
-    "flake8>=6.0.0",
-    "mypy>=1.0.0",
-    "isort>=5.0.0",
+    "pytest",
+    "pytest-qt",
+    "pytest-asyncio",
+    "black",
+    "flake8",
+    "mypy",
 ]
 test = [
-    "pytest>=7.0.0",
-    "pytest-qt>=4.0.0",
-    "pytest-asyncio>=0.20.0",
-    "pytest-cov>=4.0.0",
+    "pytest",
+    "pytest-qt",
+    "pytest-asyncio",
 ]
 
 [project.urls]
-Homepage = "https://github.com/mysql/mysql-workbench-python"
-Documentation = "https://mysql-workbench-python.readthedocs.io/"
-Repository = "https://github.com/mysql/mysql-workbench-python.git"
-Issues = "https://github.com/mysql/mysql-workbench-python/issues"
-Changelog = "https://github.com/mysql/mysql-workbench-python/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/tesmond/workbench"
+Repository = "https://github.com/tesmond/workbench.git"
+Issues = "https://github.com/tesmond/workbench/issues"
 
 [project.scripts]
-mysql-workbench-python = "workbench.main:main"
+workbench = "workbench.main:main"
 
 [project.gui-scripts]
-mysql-workbench-python-gui = "workbench.main:main"
+workbench-gui = "workbench.main:main"
 
 [tool.setuptools.packages.find]
 where = ["workbench"]
